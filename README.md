@@ -1,60 +1,93 @@
-# 🧞 CIN (Code Inside Nothing)
+# CIN (Code Inside Nothing)
 
-**CIN** is a Python-based command-line tool developed as a project for the **Image Processing** course. It implements **LSB (Least Significant Bit) Steganography** to hide secret text messages inside PNG images without noticeably altering their visual appearance.
-
------
-
-## Installation
-
-1.  **Clone the repository:**
-
-    ```bash
-    git clone https://github.com/Arastaci/cin.git
-    cd cin
-    ```
-
-2.  **Install dependencies:**
-    This project requires `OpenCV` and `NumPy`.
-
-    ```bash
-    pip install opencv-python numpy
-    ```
+**CIN** is a Python-based **Command Line Tool** developed as a project for the **Image Processing** course. It implements **LSB (Least Significant Bit) Steganography** to hide secret text messages inside PNG images without noticeably altering their visual appearance.
 
 -----
+
+## Setup
+
+You can clone the repository and install the necessary dependencies with these commands:
+
+```bash
+git clone https://github.com/Arastaci/cin.git && cd cin
+pip install -r requirements.txt
+```
+
+---
 
 ## Usage
 
-### 1\. Preparation
+CIN is a pure CLI tool. You can run it with arguments to perform operations instantly.
 
-Place the image you want to use as a cover in the project folder and name it **`input_image.png`**.
-
-> **Note:** The input image supports **PNG** and **JPG**, but the output will always be saved as **PNG** to prevent data loss.
-
-### 2\. Run the Tool
+### General Syntax
 
 ```bash
-python cin.py
+python cin.py [MODE] [ARGUMENTS]
 ```
 
-### 3\. Modes
+### 1. Encode (Hide Data)
 
-  * **[1] Encode:** \* The tool reads `input_image.png`.
+Hides a secret message inside an image.
 
-      * Asks for your secret message.
-      * Saves the result as **`encoded_image.png`**.
+* **Basic Usage:**
+```bash
+python cin.py -e -i input.png -m "This is a secret message"
+```
 
-  * **[2] Decode:**
+* **Custom Output Filename:**
+```bash
+python cin.py -e -i input.png -m "Hello World" -o secret_result.png
+```
 
-      * The tool reads `encoded_image.png`.
-      * Extracts and displays the hidden message in the terminal.
+### 2. Decode (Read Data)
 
------
+Extracts the hidden message from an encoded image.
 
-## How it Works (LSB Algorithm)
+```bash
+python cin.py -d -i output.png
+```
 
-CIN uses the **Least Significant Bit (LSB)** technique.
+### 3. Visualize (Bit Plane Slicing)
 
-1.  **Binary Conversion:** The secret text is converted into binary (0s and 1s).
-2.  **Pixel Manipulation:** The script iterates through the image pixels.
-3.  **Bit Replacement:** It replaces the last bit of each color channel (Red, Green, Blue) with a bit from the secret message.
-4.  **Delimiter:** A special delimiter (`#####`) is added to the end of the message so the decoder knows when to stop reading.
+Creates a visual map of the Least Significant Bits. This is used to demonstrate where the data is hidden by highlighting the modified pixels.
+
+```bash
+python cin.py -v -i output.png
+```
+
+> *This will generate a `visualization.png` file where white dots represent the LSB noise pattern.*
+
+---
+
+## Arguments Reference
+
+| Argument | Full Flag | Description |
+| --- | --- | --- |
+| **-e** | `--encode` | Enable **Hide Mode**. Requires `-i` and `-m`. |
+| **-d** | `--decode` | Enable **Read Mode**. Requires `-i`. |
+| **-v** | `--visualize` | Enable **Visualization Mode**. Requires `-i`. |
+| **-i** | `--input` | Path to the source image file (Required). |
+| **-o** | `--output` | Path for the saved image (Default: `output.png`). |
+| **-m** | `--message` | The text message to hide (Required for encoding). |
+
+---
+
+## Technical Details
+
+### 1. LSB Algorithm
+
+CIN manipulates the last bit (8th bit) of pixel values. Since the change is only +/- 1 in value (e.g., changing a Red value from 200 to 201), the human eye cannot detect the difference.
+
+* **Original Pixel:** `1101001[0]` (Even Number)
+* **Modified Pixel:** `1101001[1]` (Odd Number - Message Bit Inserted)
+
+### 2. Bit Plane Slicing (Visualization)
+
+To prove that data is hidden, the visualization mode extracts only the LSB plane.
+
+* **Logic:** `Pixel Value & 1` -> If 1, make it White (255); if 0, make it Black (0).
+* **Result:** A noisy image showing exactly where the text bits are stored.
+
+### 3. Capacity Check
+
+The script calculates `Width * Height * 3` to determine the maximum bit capacity of the image. If your message is too long, the program prevents execution to avoid data loss.
