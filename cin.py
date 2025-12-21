@@ -1,6 +1,16 @@
 import cv2
 import numpy as np
 import os
+import sys
+import argparse
+import binascii
+
+def xor_encrypt_decrypt(data, key):
+    key_len = len(key)
+    output = []
+    for i, char in enumerate(data):
+        output.append(chr(ord(char) ^ ord(key[i % key_len])))
+    return ''.join(output)
 
 def text_to_binary(message):
     return ''.join(format(ord(char), '08b') for char in message)
@@ -8,45 +18,56 @@ def text_to_binary(message):
 def binary_to_text(binary_data):
     all_bytes = [binary_data[i: i+8] for i in range(0, len(binary_data), 8)]
     decoded_data = ""
-    
     for byte in all_bytes:
         decoded_data += chr(int(byte, 2))
-        
         if decoded_data.endswith("#####"):
-            return decoded_data[:-5]  
-            
+            return decoded_data[:-5]
     return decoded_data
 
-def encode_data(image_path, secret_message, output_path):
+def check_capacity(img, message):
+    rows, cols, channels = img.shape
+    max_bits = rows * cols * channels
+    required_bits = (len(message) * 8) + 40 
+    
+    if required_bits > max_bits:
+        raise ValueError(f"Message too long! Need {required_bits} bits, but image has {max_bits}.")
+    return True
+
+def encode_data(image_path, secret_message, output_path, password=None):
+    if not os.path.exists(image_path):
+        print(f"[Error] Input file '{image_path}' not found.")
+        return
 
     img = cv2.imread(image_path)
-    
     if img is None:
-        print(f"[Error] The image file '{image_path}' was not found.")
+        print(f"[Error] Could not read '{image_path}'.")
+        return
+
+    if password:
+        print(f"[Security] Encrypting message with password...")
+        encrypted = xor_encrypt_decrypt(secret_message, password)
+        secret_message = "ENC:" + binascii.hexlify(encrypted.encode()).decode()
+    
+    try:
+        check_capacity(img, secret_message + "#####")
+    except ValueError as e:
+        print(f"[Error] {e}")
         return
 
     secret_message += "#####"
-    
     binary_message = text_to_binary(secret_message)
-    data_index = 0
     data_len = len(binary_message)
     
     rows, cols, channels = img.shape
+    data_index = 0
     
-    print(f"[Info] Encoding message... Total bits to hide: {data_len}")
-    
+    print(f"[Info] Encoding {data_len} bits into '{image_path}'...")
+
     for row in range(rows):
         for col in range(cols):
-            for channel in range(3):  
-                
+            for channel in range(3):
                 if data_index < data_len:
                     pixel = img[row, col, channel]
-                    
-                    # --- LSB LOGIC ---
-                    # pixel & 254 (11111110) -> Makes the last bit 0
-                    # int(binary_message[data_index]) -> The bit to hide (0 or 1)
-                    # The result is the new pixel value
-                    
                     img[row, col, channel] = (pixel & 254) | int(binary_message[data_index])
                     data_index += 1
                 else:
@@ -54,19 +75,16 @@ def encode_data(image_path, secret_message, output_path):
             if data_index >= data_len: break
         if data_index >= data_len: break
         
-    # Note: Must be saved as PNG to prevent data loss due to compression
     cv2.imwrite(output_path, img)
-    print(f"[Success] Message encoded! Image saved as '{output_path}'")
+    print(f"[Success] Saved to '{output_path}'")
 
-def decode_data(image_path):
+def decode_data(image_path, password=None):
+    if not os.path.exists(image_path):
+        print(f"[Error] File '{image_path}' not found.")
+        return
 
-    print(f"[Info] Reading image from '{image_path}'...")
-    
+    print(f"[Info] Scanning '{image_path}'...")
     img = cv2.imread(image_path)
-    
-    if img is None:
-        print("[Error] Image could not be read.")
-        return ""
     
     binary_data = ""
     rows, cols, channels = img.shape
@@ -75,11 +93,38 @@ def decode_data(image_path):
         for col in range(cols):
             for channel in range(3):
                 pixel = img[row, col, channel]
-                
                 binary_data += str(pixel & 1)
                 
-    decoded_message = binary_to_text(binary_data)
-    return decoded_message
+    raw_message = binary_to_text(binary_data)
+    
+    if raw_message.startswith("ENC:"):
+        if not password:
+            print(f"[Locked] Message is encrypted! Use -p to provide password.")
+            print(f"[Raw Data] {raw_message[:30]}...")
+        else:
+            try:
+                hex_data = raw_message[4:]
+                encrypted_bytes = binascii.unhexlify(hex_data).decode()
+                decrypted = xor_encrypt_decrypt(encrypted_bytes, password)
+                print(f"\n[+] DECODED MESSAGE: {decrypted}\n")
+            except Exception:
+                print("[Error] Wrong password or corrupted data.")
+    else:
+        if password:
+            print("[Warning] Message was NOT encrypted, but password was provided.")
+        print(f"\n[+] DECODED MESSAGE: {raw_message}\n")
+
+def visualize_lsb(image_path, output_path="visualization.png"):
+    if not os.path.exists(image_path):
+        print(f"[Error] File '{image_path}' not found.")
+        return
+
+    print(f"[Info] Creating LSB map for '{image_path}'...")
+    img = cv2.imread(image_path)
+    lsb_map = (img & 1) * 255
+    cv2.imwrite(output_path, lsb_map)
+    print(f"[Success] Map saved as '{output_path}'")
+
 
 if __name__ == "__main__":
     banner = r"""
@@ -87,41 +132,51 @@ if __name__ == "__main__":
   / _____|_  _| \ | |
  | |       | ||  \| |
  | |_____ _| || |\  |
-  \______|____|_| \_|
-  
+  \______|____|_| \_| v1.0
   Code Inside Nothing 
     """
-    print(banner)
-    print("========================================")
-    print(" [1] Encode (Hide Message into Image)")
-    print(" [2] Decode (Read Message from Image)")
-    print(" [Q] Quit")
-    print("========================================")
     
-    choice = input("\nroot@cin:~$ Select option (1/2): ")
+    parser = argparse.ArgumentParser(
+        description="CIN: Code Inside Nothing - Hide data in pixels.",
+        epilog="Example: python cin.py -e -i input.png -m 'Secret' -p 1234"
+    )
     
-    if choice == '1':
-        input_file = "input_image.png" # Make sure this file exists
-        output_file = "encoded_image.png"
-        
-        if not os.path.exists(input_file):
-            print(f"\n[!] Error: '{input_file}' not found.")
+    mode_group = parser.add_argument_group('Modes')
+    mode_group.add_argument("-e", "--encode", action="store_true", help="Encode (Hide) mode")
+    mode_group.add_argument("-d", "--decode", action="store_true", help="Decode (Read) mode")
+    mode_group.add_argument("-v", "--visualize", action="store_true", help="Visualize LSB noise map")
+
+    args_group = parser.add_argument_group('Arguments')
+    args_group.add_argument("-i", "--input", type=str, help="Input image path")
+    args_group.add_argument("-o", "--output", type=str, default="output.png", help="Output image path (for encoding)")
+    args_group.add_argument("-m", "--message", type=str, help="Message to hide (for encoding)")
+    args_group.add_argument("-p", "--password", type=str, help="Password for encryption/decryption")
+
+    if len(sys.argv) == 1:
+        print(banner)
+        parser.print_help(sys.stderr)
+        sys.exit(1)
+
+    args = parser.parse_args()
+
+    if args.encode:
+        if not args.input or not args.message:
+            print("[Error] Encode mode requires --input (-i) and --message (-m)")
         else:
-            message = input("Enter secret message: ")
-            encode_data(input_file, message, output_file)
+            encode_data(args.input, args.message, args.output, args.password)
             
-    elif choice == '2':
-        target_file = "encoded_image.png"
-        
-        if not os.path.exists(target_file):
-             print(f"\n[!] Error: '{target_file}' not found.")
+    elif args.decode:
+        if not args.input:
+            print("[Error] Decode mode requires --input (-i)")
         else:
-            hidden_msg = decode_data(target_file)
-            print(f"\n[+] DECODED MESSAGE: {hidden_msg}")
+            decode_data(args.input, args.password)
             
-    elif choice.lower() == 'q':
-        print("\n[!] Exiting...")
-        exit()
-        
+    elif args.visualize:
+        if not args.input:
+            print("[Error] Visualize mode requires --input (-i)")
+        else:
+            visualize_lsb(args.input)
+            
     else:
-        print("\n[!] Invalid selection.")
+        print("[Error] Please select a mode: -e, -d, or -v")
+        parser.print_help()
