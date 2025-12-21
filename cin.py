@@ -3,14 +3,6 @@ import numpy as np
 import os
 import sys
 import argparse
-import binascii
-
-def xor_encrypt_decrypt(data, key):
-    key_len = len(key)
-    output = []
-    for i, char in enumerate(data):
-        output.append(chr(ord(char) ^ ord(key[i % key_len])))
-    return ''.join(output)
 
 def text_to_binary(message):
     return ''.join(format(ord(char), '08b') for char in message)
@@ -33,7 +25,7 @@ def check_capacity(img, message):
         raise ValueError(f"Message too long! Need {required_bits} bits, but image has {max_bits}.")
     return True
 
-def encode_data(image_path, secret_message, output_path, password=None):
+def encode_data(image_path, secret_message, output_path):
     if not os.path.exists(image_path):
         print(f"[Error] Input file '{image_path}' not found.")
         return
@@ -42,11 +34,6 @@ def encode_data(image_path, secret_message, output_path, password=None):
     if img is None:
         print(f"[Error] Could not read '{image_path}'.")
         return
-
-    if password:
-        print(f"[Security] Encrypting message with password...")
-        encrypted = xor_encrypt_decrypt(secret_message, password)
-        secret_message = "ENC:" + binascii.hexlify(encrypted.encode()).decode()
     
     try:
         check_capacity(img, secret_message + "#####")
@@ -78,7 +65,7 @@ def encode_data(image_path, secret_message, output_path, password=None):
     cv2.imwrite(output_path, img)
     print(f"[Success] Saved to '{output_path}'")
 
-def decode_data(image_path, password=None):
+def decode_data(image_path):
     if not os.path.exists(image_path):
         print(f"[Error] File '{image_path}' not found.")
         return
@@ -96,23 +83,7 @@ def decode_data(image_path, password=None):
                 binary_data += str(pixel & 1)
                 
     raw_message = binary_to_text(binary_data)
-    
-    if raw_message.startswith("ENC:"):
-        if not password:
-            print(f"[Locked] Message is encrypted! Use -p to provide password.")
-            print(f"[Raw Data] {raw_message[:30]}...")
-        else:
-            try:
-                hex_data = raw_message[4:]
-                encrypted_bytes = binascii.unhexlify(hex_data).decode()
-                decrypted = xor_encrypt_decrypt(encrypted_bytes, password)
-                print(f"\n[+] DECODED MESSAGE: {decrypted}\n")
-            except Exception:
-                print("[Error] Wrong password or corrupted data.")
-    else:
-        if password:
-            print("[Warning] Message was NOT encrypted, but password was provided.")
-        print(f"\n[+] DECODED MESSAGE: {raw_message}\n")
+    print(f"\n[+] DECODED MESSAGE: {raw_message}\n")
 
 def visualize_lsb(image_path, output_path="visualization.png"):
     if not os.path.exists(image_path):
@@ -125,20 +96,18 @@ def visualize_lsb(image_path, output_path="visualization.png"):
     cv2.imwrite(output_path, lsb_map)
     print(f"[Success] Map saved as '{output_path}'")
 
-
 if __name__ == "__main__":
     banner = r"""
    ______ ____ _   _ 
   / _____|_  _| \ | |
  | |       | ||  \| |
  | |_____ _| || |\  |
-  \______|____|_| \_| v1.0
+  \______|____|_| \_| 
   Code Inside Nothing 
     """
     
     parser = argparse.ArgumentParser(
-        description="CIN: Code Inside Nothing - Hide data in pixels.",
-        epilog="Example: python cin.py -e -i input.png -m 'Secret' -p 1234"
+        epilog="Example: python cin.py -e -i input.png -m 'Secret'"
     )
     
     mode_group = parser.add_argument_group('Modes')
@@ -150,7 +119,6 @@ if __name__ == "__main__":
     args_group.add_argument("-i", "--input", type=str, help="Input image path")
     args_group.add_argument("-o", "--output", type=str, default="output.png", help="Output image path (for encoding)")
     args_group.add_argument("-m", "--message", type=str, help="Message to hide (for encoding)")
-    args_group.add_argument("-p", "--password", type=str, help="Password for encryption/decryption")
 
     if len(sys.argv) == 1:
         print(banner)
@@ -163,13 +131,13 @@ if __name__ == "__main__":
         if not args.input or not args.message:
             print("[Error] Encode mode requires --input (-i) and --message (-m)")
         else:
-            encode_data(args.input, args.message, args.output, args.password)
+            encode_data(args.input, args.message, args.output)
             
     elif args.decode:
         if not args.input:
             print("[Error] Decode mode requires --input (-i)")
         else:
-            decode_data(args.input, args.password)
+            decode_data(args.input)
             
     elif args.visualize:
         if not args.input:
