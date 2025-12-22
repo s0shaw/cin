@@ -57,6 +57,22 @@ python cin.py -v -i output.png
 
 > *This will generate a `visualization.png` file where white dots represent the LSB noise pattern.*
 
+### 4. Compare (Find Differences)
+
+Compares two images and highlights the differences with red rectangles.
+
+* **Basic Usage:**
+```bash
+python cin.py -c -i image1.png -i2 image2.png
+```
+
+* **Custom Sensitivity (lower = more sensitive):**
+```bash
+python cin.py -c -i image1.png -i2 image2.png -t 15 -o differences.png
+```
+
+> *This will generate an output image with red boxes marking all detected differences.*
+
 ---
 
 ## Arguments Reference
@@ -66,9 +82,12 @@ python cin.py -v -i output.png
 | **-e** | `--encode` | Enable **Hide Mode**. Requires `-i` and `-m`. |
 | **-d** | `--decode` | Enable **Read Mode**. Requires `-i`. |
 | **-v** | `--visualize` | Enable **Visualization Mode**. Requires `-i`. |
+| **-c** | `--compare` | Enable **Compare Mode**. Requires `-i` and `-i2`. |
 | **-i** | `--input` | Path to the source image file (Required). |
+| **-i2** | `--input2` | Path to second image (Required for compare). |
 | **-o** | `--output` | Path for the saved image (Default: `output.png`). |
 | **-m** | `--message` | The text message to hide (Required for encoding). |
+| **-t** | `--threshold` | Sensitivity for compare mode (Default: 30). |
 
 ---
 
